@@ -1,0 +1,13 @@
+{
+    "terminal.integrated.env.osx": {
+        "PATH": "/Users/jakubziembinski/.platformio/penv/bin:/Users/jakubziembinski/.platformio/penv:/Users/jakubziembinski/google-cloud-sdk/bin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "PLATFORMIO_CALLER": "vscode"
+    },
+    "files.associations": {
+        "array": "cpp",
+        "deque": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "initializer_list": "cpp"
+    }
+}
