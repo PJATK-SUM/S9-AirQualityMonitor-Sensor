@@ -1,23 +1,35 @@
+#include <Credentials.h>
 #include <Arduino.h>
-#include <pms.h>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
-#include <ArduinoJson-v5.13.3.h>
-
-const char* ssid = "No Password For Ya";
-const char* pass = "MightyP@ssw0rd";
+#include <Adafruit_MQTT.h>
+#include <Adafruit_MQTT_Client.h>
+#include <pms.h>
 
 Pmsx003 pms(D5, D6);
+Pmsx003::pmsData latestData[Pmsx003::Reserved];
+
+WiFiClient client;
+
+Adafruit_MQTT_Client mqtt = Adafruit_MQTT_Client(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+Adafruit_MQTT_Publish pm2dot5feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/air-quality-monitor.pm2dot5");
+Adafruit_MQTT_Publish pm10feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/air-quality-monitor.pm10");
+
+auto lastRead = millis();
+
+void MQTT_connect();
 
 // SETUP
 
 void setupInternetConnection() {
     WiFi.mode(WIFI_STA);
-	WiFi.begin(ssid, pass);
+	WiFi.begin(WIFI_SSID, WIFI_PASS);
+	Serial.print("Connecting");
 	while (WiFi.status() != WL_CONNECTED) {
     	delay(500);
-    	Serial.println("Waiting for connection");
-  }
+    	Serial.print(".");
+  	}
+	Serial.println();
 }
 
 void setupPMS() {
@@ -36,59 +48,52 @@ void setup() {
 
 // RUN CODE
 
-void postData(JsonObject &object) {
-    if (WiFi.status() == WL_CONNECTED) {
-        const char* url = "https://us-central1-air-quality-monitor-server.cloudfunctions.net/aqmDataReceiver";
-        const char* thumbprint = "695821299d57b0e2eb0c713640e8D9e4da16f230";
-		
-        char messageBuffer[300];
-		object.prettyPrintTo(messageBuffer, sizeof(messageBuffer));
+void MQTT_connect() {
+	int8_t ret;
 
-		HTTPClient http;
-		http.begin(url, thumbprint);
-		http.addHeader("Content-Type", "application/json");
-		int httpCode = http.POST(messageBuffer);
-        if(httpCode != HTTP_CODE_OK) {
-            Serial.println("Response code: " + httpCode);
-        }
-		http.end();
+	if(mqtt.connected()) { return; }
+
+	uint8_t retries = 3;
+	while ((ret = mqtt.connect()) != 0) {
+		Serial.println(mqtt.connectErrorString(ret));
+       	mqtt.disconnect();
+		retries--;
+		if (retries == 2) { delay(5000); } // wait 5 seconds
+		if (retries == 1) { delay(60000); } // wait 1 minute
+		if (retries == 0) { delay(60000); } // wait 10 minutes
+		else { 
+			Serial.println("Going to sleep.");
+			while(1);
+		}
+	}
+	Serial.println("MQTT connected.");
+}
+
+Pmsx003::PmsStatus getPMSdata() {
+	return pms.read(latestData, Pmsx003::Reserved);;
+}
+
+void publishData() {
+	Serial.print("Publishing data: ");
+	if (
+		!pm2dot5feed.publish(latestData[Pmsx003::PM2dot5]) ||
+		!pm10feed.publish(latestData[Pmsx003::PM10dot0])
+	) {
+		Serial.println(F("Failed publishing."));
 	} else {
-        Serial.println("Lost connection");
-        delay(500);
-    }
+		Serial.println(F("OK!"));
+	}
 }
 
 void loop(void) {
-	const auto n = Pmsx003::Reserved;
-	Pmsx003::pmsData data[n];
+	MQTT_connect();
 
-	Pmsx003::PmsStatus status = pms.read(data, n);
+	if (millis() - lastRead > 10000) {
+		Pmsx003::PmsStatus status = getPMSdata();
 
-	switch (status) {
-		case Pmsx003::OK: {
-			const int N = 3;
-			u_int pmDataIndexes [N] = {Pmsx003::PM1dot0, Pmsx003::PM2dot5, Pmsx003::PM10dot0};
-
-			StaticJsonBuffer<300> JSONbuffer;
-			JsonObject& JSONencoder = JSONbuffer.createObject();
-			JsonObject& measurements = JSONencoder.createNestedObject("measurements");
-
-			for(size_t i = 0; i < N; ++i) {
-				u_int index = pmDataIndexes[i];
-				auto pmName = Pmsx003::dataNames[index];
-				auto pmMetric = Pmsx003::metrics[index];
-				auto pm = data[index];
-                
-				measurements[pmName] = pm;
-			}
-
-            postData(JSONencoder);
-			break;
+		if(status == Pmsx003::OK) {
+			lastRead = millis();
+			publishData();
 		}
-		case Pmsx003::noData:
-			break;
-		default:
-			Serial.print("___ ERROR ___ :");
-			Serial.println(Pmsx003::errorMsg[status]);
-	};
+	}
 }
