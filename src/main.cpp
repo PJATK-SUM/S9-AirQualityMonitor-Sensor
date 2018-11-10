@@ -23,7 +23,7 @@ void MQTT_connect();
 
 void setupInternetConnection() {
     WiFi.mode(WIFI_STA);
-	WiFi.begin(WIFI_SSID, WIFI_PASS);
+	WiFi.begin(WIFI_SSID_2, WIFI_PASS_2);
 	Serial.print("Connecting");
 	while (WiFi.status() != WL_CONNECTED) {
     	delay(500);
@@ -40,7 +40,7 @@ void setupPMS() {
 
 void setup() {
 	Serial.begin(115200);
-    while(!Serial) {};
+    // while(!Serial) {};
 	
 	setupInternetConnection();
 	setupPMS();
@@ -59,18 +59,22 @@ void MQTT_connect() {
        	mqtt.disconnect();
 		retries--;
 		if (retries == 2) { delay(5000); } // wait 5 seconds
-		if (retries == 1) { delay(60000); } // wait 1 minute
-		if (retries == 0) { delay(60000); } // wait 10 minutes
+		else if (retries == 1) { delay(60000); } // wait 1 minute		
+		else if (retries == 0) { delay(60000); } // wait 10 minutes
 		else { 
 			Serial.println("Going to sleep.");
+			pms.write(Pmsx003::cmdSleep);
 			while(1);
 		}
 	}
 	Serial.println("MQTT connected.");
 }
 
-Pmsx003::PmsStatus getPMSdata() {
-	return pms.read(latestData, Pmsx003::Reserved);;
+void getPMSdata() {
+	pms.write(Pmsx003::cmdWakeup);
+	delay(10000);
+	pms.read(latestData, Pmsx003::Reserved);
+	pms.write(Pmsx003::cmdSleep);
 }
 
 void publishData() {
@@ -89,11 +93,8 @@ void loop(void) {
 	MQTT_connect();
 
 	if (millis() - lastRead > 10000) {
-		Pmsx003::PmsStatus status = getPMSdata();
-
-		if(status == Pmsx003::OK) {
-			lastRead = millis();
-			publishData();
-		}
+		getPMSdata();
+		lastRead = millis();
+		publishData();
 	}
 }
