@@ -21,9 +21,9 @@ WiFiClient client;
 Adafruit_MQTT_Client mqtt = Adafruit_MQTT_Client(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
 Adafruit_MQTT_Publish pm2dot5_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/air-quality-monitor.pm2dot5");
 Adafruit_MQTT_Publish pm10_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/air-quality-monitor.pm10");
-Adafruit_MQTT_Publish temp_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "feeds/air-quality-monitor.temp");
-Adafruit_MQTT_Publish hum_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "feeds/air-quality-monitor.hum");
-Adafruit_MQTT_Publish press_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "feeds/air-quality-monitor.press");
+Adafruit_MQTT_Publish temp_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/air-quality-monitor.temp");
+Adafruit_MQTT_Publish hum_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/air-quality-monitor.hum");
+Adafruit_MQTT_Publish press_feed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/air-quality-monitor.press");
 
 auto lastRead = millis();
 
@@ -33,7 +33,7 @@ void MQTT_connect();
 
 void setupInternetConnection() {
     WiFi.mode(WIFI_STA);
-	WiFi.begin(WIFI_SSID_2, WIFI_PASS_2);
+	WiFi.begin(WIFI_SSID_S9, WIFI_PASS_S9);
 	Serial.print("Connecting");
 	while (WiFi.status() != WL_CONNECTED) {
     	delay(500);
@@ -54,7 +54,6 @@ void setupBME() {
 
 void setup() {
 	Serial.begin(115200);
-    while(!Serial) {};
 	
 	setupInternetConnection();
 	setupPMS();
@@ -91,9 +90,13 @@ void getData() {
     pms.read(pmsLatestData, Pmsx003::Reserved);
 	pms.write(Pmsx003::cmdSleep);
 
-    latestTemp = bme.readTemperature();
-    latestHum = bme.readHumidity();
-    latestPress = bme.readPressure() / 100.0F;
+	if(bme.begin()) {
+		latestTemp = bme.readTemperature();
+    	latestHum = bme.readHumidity();
+    	latestPress = bme.readPressure() / 100.0F;
+	} else {
+		Serial.println("No BME module found.");
+	}
 }
 
 void publishData() {
